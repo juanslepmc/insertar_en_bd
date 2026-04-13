@@ -28,7 +28,7 @@ def crear_conexion():
 
 def insertar_desde_excel(conexion, ruta_archivo):
     """
-    Lee un archivo Excel y carga sus datos masivamente en la tabla 'establecimientos'.
+    Lee un archivo Excel y carga sus datos de forma iterativa para reportar errores por fila.
     """
     try:
         # 1. Verificar si el archivo existe
@@ -36,42 +36,59 @@ def insertar_desde_excel(conexion, ruta_archivo):
             print(f"Error: No se encontró el archivo '{ruta_archivo}' en la carpeta actual.")
             return
 
-        print(f"Leyendo el archivo '{ruta_archivo}'...")
+        print(f"Leyendo el archivo '{ruta_archivo}'...\n")
         
         # 2. Leer el Excel usando pandas
         df = pd.read_excel(ruta_archivo)
         
-        # 3. Limpieza: Pandas lee celdas vacías como 'NaN'. MySQL requiere que sean 'None' (NULL en SQL)
+        # 3. Limpieza: Pandas lee celdas vacías como 'NaN'. MySQL requiere que sean 'None'
         df = df.where(pd.notnull(df), None)
-
-        # 4. Convertir el DataFrame a una lista de tuplas para la inserción masiva
-        datos_a_insertar = [tuple(x) for x in df.to_numpy()]
 
         cursor = conexion.cursor()
         
-        # 5. Escribir la consulta SQL paramétrica
-        # NOTA: Usamos INSERT IGNORE para que, si ejecutas el script 2 veces, 
-        # no se caiga por intentar insertar un RBD (Primary Key) que ya existe.
+        # 4. Escribir la consulta SQL paramétrica (Quitamos el IGNORE para forzar el error)
         consulta = """
-            INSERT IGNORE INTO establecimientos 
-            (rbd, nombre, comuna, region, direccion, email, telefono) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO establecimientos 
+            (rbd, nombre, comuna, region, direccion, email, telefono, estado) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
         
-        # 6. Ejecutar la inserción masiva
-        cursor.executemany(consulta, datos_a_insertar)
+        insertados = 0
+        fallidos = 0
+
+        # 5. Iterar fila por fila usando pandas iterrows()
+        print("Iniciando carga de datos...")
+        for index, row in df.iterrows():
+            # index empieza en 0, y el Excel suele tener cabecera en la fila 1, por lo que los datos parten en la 2
+            fila_excel = index + 2 
+            rbd_actual = row['rbd']
+            
+            try:
+                # Intentamos insertar la fila actual
+                cursor.execute(consulta, tuple(row))
+                insertados += 1
+                
+            except mysql.connector.Error as e:
+                fallidos += 1
+                # El código de error 1062 en MySQL significa "Duplicate entry" (RBD ya existe)
+                if e.errno == 1062:
+                    print(f"⚠️ Omitido -> Fila Excel {fila_excel} | RBD: {rbd_actual} | Motivo: El RBD ya existe en la BD.")
+                else:
+                    # Capturamos cualquier otro tipo de error (ej: un string demasiado largo)
+                    print(f"❌ Error -> Fila Excel {fila_excel} | RBD: {rbd_actual} | Motivo: {e.msg}")
         
-        # 7. Confirmar los cambios en la base de datos (¡Muy importante para los INSERT!)
+        # 6. Confirmar los cambios en la base de datos
         conexion.commit()
         
-        print(f"¡Proceso finalizado! Se insertaron {cursor.rowcount} registros nuevos en 'establecimientos'.\n")
+        print("-" * 60)
+        print(f"¡Proceso finalizado!")
+        print(f"✅ Registros insertados exitosamente: {insertados}")
+        print(f"⛔ Registros omitidos o fallidos: {fallidos}\n")
 
-    except Error as e:
-        # Si hay un error de MySQL, deshacemos la transacción para no dejar datos a medias
-        conexion.rollback()
-        print(f"Error de base de datos durante la inserción: {e}")
     except Exception as e:
-        print(f"Ocurrió un error inesperado al procesar el Excel: {e}")
+        # Hacemos rollback solo si el error es general, no de una fila específica
+        conexion.rollback()
+        print(f"Ocurrió un error crítico inesperado al procesar el Excel: {e}")
     finally:
         if 'cursor' in locals():
             cursor.close()
@@ -95,7 +112,7 @@ def consultar_establecimientos(conexion):
         else:
             print(f"Se encontraron {len(registros)} establecimientos en la base de datos:\n")
             for fila in registros:
-                print(f"RBD: {fila['rbd']} | Nombre: {fila['nombre']} | Comuna: {fila['comuna']} | Teléfono: {fila['telefono']}")
+                print(f"RBD: {fila['rbd']} | Nombre: {fila['nombre']} | Comuna: {fila['comuna']} | Teléfono: {fila['telefono']} | Estado: {fila['estado']}")
 
     except Error as e:
         print(f"Error al ejecutar la consulta: {e}")
@@ -109,8 +126,8 @@ def consultar_establecimientos(conexion):
 # FLUJO PRINCIPAL DE EJECUCIÓN
 # ==========================================
 if __name__ == '__main__':
-    # Nombre de tu archivo (asegúrate de que esté en la misma carpeta que este script)
-    archivo_excel = 'excel/test_subida_ee.xlsx'
+    # Nombre de tu archivo
+    archivo_excel = 'excel/establecimientos_carga.xlsx'
     
     # 1. Establecer conexión
     conexion_db = crear_conexion()
