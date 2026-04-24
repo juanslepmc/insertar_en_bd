@@ -9,7 +9,7 @@ def crear_conexion():
             host='localhost',
             port=3306,
             user='root',
-            password='123456789', # Tu contraseña
+            password='123456789', 
             database='bd_institucional_v2'
         )
         return conexion
@@ -18,29 +18,24 @@ def crear_conexion():
         return None
 
 def procesar_rut(rut_sucio):
-    """ Quita los puntos del RUT: 17.187.030-5 -> 17187030-5 """
-    if not rut_sucio: return None
+    """ Quita los puntos del RUT. """
+    if rut_sucio == "Sin información": 
+        return rut_sucio
     return str(rut_sucio).replace('.', '').strip()
 
 def transformar_nombre_completo(nombre_original):
-    """
-    Transforma 'ABARZA ARELLANO, LEONARDO ESTEBAN' 
-    en: nombres='Leonardo Esteban', paterno='Abarza', materno='Arellano'
-    """
-    if not nombre_original or pd.isna(nombre_original) or ',' not in str(nombre_original):
-        return nombre_original, "", ""
+    """ Transforma el nombre completo a formato Título. """
+    if nombre_original == "Sin información" or ',' not in str(nombre_original):
+        return nombre_original, "Sin información", "Sin información"
 
-    # 1. Separar por la coma
     partes = str(nombre_original).split(',')
-    apellidos_raw = partes[0].strip() # ABARZA ARELLANO
-    nombres_raw = partes[1].strip()   # LEONARDO ESTEBAN
+    apellidos_raw = partes[0].strip()
+    nombres_raw = partes[1].strip()
 
-    # 2. Separar apellidos
     lista_apellidos = apellidos_raw.split()
-    apellido_paterno = lista_apellidos[0].title() if len(lista_apellidos) > 0 else ""
-    apellido_materno = lista_apellidos[1].title() if len(lista_apellidos) > 1 else ""
+    apellido_paterno = lista_apellidos[0].title() if len(lista_apellidos) > 0 else "Sin información"
+    apellido_materno = lista_apellidos[1].title() if len(lista_apellidos) > 1 else "Sin información"
     
-    # 3. Formatear nombres
     nombres = nombres_raw.title()
 
     return nombres, apellido_paterno, apellido_materno
@@ -51,12 +46,18 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
             print(f"Error: No existe el archivo {ruta_archivo}")
             return
 
-        print("Leyendo Excel y transformando datos...")
+        print("Leyendo Excel y normalizando datos...")
         df = pd.read_excel(ruta_archivo)
         
-        # --- SOLUCIÓN AL ERROR DE 'nan' ---
-        # 1. Convertimos todos los NaN de Pandas a None de Python (para que MySQL reciba NULL)
-        df = df.where(pd.notnull(df), None)
+        # 1. Rellenar celdas vacías con "Sin información"
+        df = df.fillna("Sin información")
+
+        # 2. Correo: Todo a minúsculas
+        df['Email'] = df['Email'].astype(str).str.lower()
+
+        # 3. Cargo: Solo la primera letra en Mayúscula (Sentence case)
+        # .str.capitalize() hace exactamente lo que pediste
+        df['Cargo'] = df['Cargo'].astype(str).str.capitalize()
         
         cursor = conexion.cursor()
 
@@ -83,16 +84,10 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
         for index, row in df.iterrows():
             fila_excel = index + 2
             
-            # Transformaciones
+            # Transformaciones de lógica interna
             rut_limpio = procesar_rut(row['RUN'])
             nombres, ap_paterno, ap_materno = transformar_nombre_completo(row['Nombre'])
             
-            # --- PROTECCIÓN ADICIONAL PARA 'nan' ---
-            # Evaluamos si el dato es None antes de forzarlo a string
-            fecha_nac = str(row['Fecha Nacimiento']) if row['Fecha Nacimiento'] is not None else None
-            fono = str(row['Teléfono']) if row['Teléfono'] is not None else None
-
-            # Datos para el INSERT
             valores = (
                 rut_limpio,
                 nombres,
@@ -100,10 +95,10 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
                 ap_materno,
                 row['Sexo'],
                 row['Email'],
-                fecha_nac, 
+                str(row['Fecha Nacimiento']), 
                 row['Cargo'],
                 row['Comuna'],
-                fono,
+                str(row['Teléfono']),
                 row['estado']
             )
 
