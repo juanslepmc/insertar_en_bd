@@ -17,6 +17,12 @@ def crear_conexion():
         print(f"❌ Error de conexión: {e}")
         return None
 
+def procesar_rut(rut_sucio):
+    """ Quita los puntos del RUT. """
+    if rut_sucio == "Sin información": 
+        return rut_sucio
+    return str(rut_sucio).replace('.', '').strip()
+
 def limpiar_numero(valor):
     """ Convierte a decimal. Si falla o es vacío, devuelve 0.0 """
     if pd.isna(valor) or str(valor).strip() == "" or valor == "Sin información":
@@ -93,7 +99,7 @@ def cargar_adquisicion_p01(conexion, ruta_archivo):
                 str(row['fecha_documento_compra']),
                 0.0, # monto_total_documento_compra (no detectado en origen)
                 str(row['razon_social_proveedor']),
-                str(row['rut_proveedor']),
+                procesar_rut(str(row['rut_proveedor'])),
                 str(row['estado']),
                 str(row['nombre_usuario_ejecutivo_compras']),
                 str(row['nombre_usuario_jefe_compras']),

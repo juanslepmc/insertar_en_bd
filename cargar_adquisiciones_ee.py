@@ -22,6 +22,14 @@ def crear_conexion():
 # --------------------------------------------------
 # UTILIDADES
 # --------------------------------------------------
+
+def procesar_rut(rut_sucio):
+    """ Quita los puntos del RUT. """
+    if rut_sucio == "Sin información": 
+        return rut_sucio
+    return str(rut_sucio).replace('.', '').strip()
+
+
 def limpiar_decimal(valor):
     if pd.isna(valor) or str(valor).strip() == "" or valor == "Sin información":
         return 0.0
@@ -117,7 +125,7 @@ def cargar_adquisicion_completo(conexion, ruta_archivo):
                 str(row.get('numero_documento_compra', '')),
                 str(row.get('fecha_documento_compra', '')),
                 str(row.get('razon_social_proveedor', '')),
-                str(row.get('rut_proveedor', '')),
+                procesar_rut(str(row.get('rut_proveedor', ''))),
                 str(row.get('estado', '')),
                 str(row.get('nombre_usuario_ejecutivo_compras', '')),
                 str(row.get('nombre_usuario_jefe_compras', '')),
