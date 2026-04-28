@@ -39,7 +39,11 @@ def cargar_compras_completo(conexion, ruta_archivo):
         )
 
         df.columns = df.columns.str.strip().str.lower()
+        # 1. Identificamos qué columnas NO son el RBD
+        cols_para_limpiar = [c for c in df.columns if c != 'detalle_numero_rbd']
 
+        # 2. Llenamos solo esas con "Sin información"
+        df[cols_para_limpiar] = df[cols_para_limpiar].fillna("Sin información")
         conexion.start_transaction()
         cursor.execute("DELETE FROM Compras_por_EE")
 
