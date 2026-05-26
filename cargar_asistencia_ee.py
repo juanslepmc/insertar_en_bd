@@ -23,7 +23,7 @@ def crear_conexion():
 # UTILIDADES DE LIMPIEZA
 # --------------------------------------------------
 def formatear_rut(run, dv):
-    """ Une el MRUN y el DIGITO formando el formato 12345678-K """
+    """ Une el RUN_ALU y el DGV_ALU formando el formato 12345678-K """
     try:
         if pd.isna(run) or pd.isna(dv):
             return None
@@ -34,18 +34,27 @@ def formatear_rut(run, dv):
         return None
 
 def limpiar_decimal_asistencia(valor):
-    """ 
-    Convierte '0,769230769' (Excel) en 0.769230769 (Python Float)
-    MySQL se encargará de redondearlo según el tipo de dato de la tabla.
-    """
+    """ Convierte de forma segura valores a Float, manejando NaN """
     try:
-        if pd.isna(valor) or str(valor).strip() == "":
+        if pd.isna(valor) or str(valor).strip() == "" or str(valor).lower() == "nan":
             return 0.0
-        # Reemplazamos coma por punto para que Python lo entienda como número
         val_str = str(valor).replace(',', '.')
         return float(val_str)
     except:
         return 0.0
+
+def limpiar_entero(valor):
+    """ 
+    🛡️ EVITA EL ERROR DE FLOAT NaN TO INTEGER
+    Convierte de forma segura a entero, manejando NaN, vacíos y flotantes como '22.0'
+    """
+    try:
+        if pd.isna(valor) or str(valor).strip() == "" or str(valor).lower() == "nan":
+            return 0
+        # Convertimos primero a float y luego a int por si viene como '22.0'
+        return int(float(valor))
+    except:
+        return 0
 
 # --------------------------------------------------
 # PROCESO DE CARGA
@@ -58,10 +67,9 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
             print(f"❌ No se encontró el archivo: {ruta_archivo}")
             return
 
-        # Leemos forzando identidad como texto
         df = pd.read_excel(
             ruta_archivo, 
-            dtype={'RBD': str, 'MRUN': str, 'DIGITO': str}
+            dtype={'RBD': str, 'RUN_ALU': str, 'DGV_ALU': str}
         )
 
         df.columns = df.columns.str.strip().str.lower()
@@ -70,7 +78,6 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
             print("⚠️ Archivo vacío.")
             return
 
-        # Detectar periodo desde la primera fila
         anio_carga = int(df.iloc[0]['agno'])
         mes_carga = int(df.iloc[0]['mes_escolar'])
 
@@ -78,7 +85,6 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
         print(f"⚡ Iniciando carga de Asistencia: {mes_carga}-{anio_carga}")
         conexion.start_transaction()
 
-        # Borrado selectivo para evitar duplicados
         cursor.execute("DELETE FROM Asistencia WHERE anio = %s AND mes = %s", (anio_carga, mes_carga))
 
         sql_insert = """
@@ -93,7 +99,7 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
 
         for index, row in df.iterrows():
             rbd_val = str(row.get('rbd', '')).strip()
-            rut_generado = formatear_rut(row.get('mrun'), row.get('digito'))
+            rut_generado = formatear_rut(row.get('run_alu'), row.get('dgv_alu'))
 
             if not rbd_val or rbd_val == 'nan' or not rut_generado:
                 fila_err = row.to_dict()
@@ -101,15 +107,15 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
                 filas_omitidas.append(fila_err)
                 continue
 
-            # Preparar valores para MySQL
+            # 🛠️ Aplicamos las funciones de limpieza para blindar los números
             valores = (
                 anio_carga,
                 mes_carga,
                 rbd_val,
                 rut_generado,
-                int(row.get('dias_asistidos', 0)),
-                int(row.get('dias_trabajados', 0)),
-                limpiar_decimal_asistencia(row.get('asis_promedio', 0))
+                limpiar_entero(row.get('dias_asistidos')),
+                limpiar_entero(row.get('dias_matriculados')), 
+                limpiar_decimal_asistencia(row.get('pct_asist_sobre_matricula')) 
             )
 
             try:
@@ -123,8 +129,7 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
                     if 'rbd' in error_msg:
                         fila_err['motivo_error'] = f"RBD {rbd_val} no existe"
                     else:
-                        # Este es el caso que esperas: Alumnos 2025 que no están en la carga de Marzo 2026
-                        fila_err['motivo_error'] = "Alumno no registrado en la base de datos"
+                        fila_err['motivo_error'] = "Alumno no registrado en la base de datos (Histórico)"
                 else:
                     fila_err['motivo_error'] = f"Error MySQL: {e.msg}"
                 
@@ -132,7 +137,6 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
 
         conexion.commit()
 
-        # Generar Log de errores/omitidos
         if filas_omitidas:
             if not os.path.exists('excel'): os.makedirs('excel')
             df_err = pd.DataFrame(filas_omitidas)
@@ -144,12 +148,12 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
 
     except Exception as e:
         conexion.rollback()
-        print(f"❌ ERROR: {e}")
+        print(f"❌ ERROR CRÍTICO: {e}")
     finally:
         cursor.close()
 
 if __name__ == '__main__':
-    ARCHIVO = 'excel/asistencia-12-2025.xlsx'
+    ARCHIVO = 'excel/asistencia/2025/12/12-SLEP-MAULE-COSTA-DICIEMBRE-2025.xlsx' 
     conn = crear_conexion()
     if conn:
         cargar_asistencia_incremental(conn, ARCHIVO)
