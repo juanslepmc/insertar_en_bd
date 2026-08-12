@@ -2,6 +2,7 @@ import mysql.connector
 from mysql.connector import Error
 import pandas as pd
 import os
+from datetime import datetime
 
 def crear_conexion():
     try:
@@ -40,6 +41,28 @@ def transformar_nombre_completo(nombre_original):
 
     return nombres, apellido_paterno, apellido_materno
 
+def formatear_fecha(fecha_raw):
+    """ Convierte fechas a formato dd/mm/yyyy. """
+    if pd.isna(fecha_raw) or str(fecha_raw).strip() in ["Sin información", "", "nan", "None"]:
+        return "Sin información"
+    
+    # Si Pandas leyó la celda directamente como Timestamp/datetime
+    if isinstance(fecha_raw, (pd.Timestamp, datetime)):
+        return fecha_raw.strftime('%d/%m/%Y')
+    
+    val_str = str(fecha_raw).strip()
+    
+    # Intentar parseo con pandas para formatos variados (ej: 1990-08-15)
+    try:
+        dt = pd.to_datetime(val_str, dayfirst=True, format='mixed', errors='coerce')
+        if not pd.isna(dt):
+            return dt.strftime('%d/%m/%Y')
+    except Exception:
+        pass
+
+    # Si es una cadena directa como '15-08-1990', se reemplazan guiones por barras
+    return val_str.replace('-', '/')
+
 def cargar_nomina_funcionarios(conexion, ruta_archivo):
     try:
         if not os.path.exists(ruta_archivo):
@@ -56,7 +79,6 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
         df['Email'] = df['Email'].astype(str).str.lower()
 
         # 3. Cargo: Solo la primera letra en Mayúscula (Sentence case)
-        # .str.capitalize() hace exactamente lo que pediste
         df['Cargo'] = df['Cargo'].astype(str).str.capitalize()
         
         cursor = conexion.cursor()
@@ -87,6 +109,7 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
             # Transformaciones de lógica interna
             rut_limpio = procesar_rut(row['RUN'])
             nombres, ap_paterno, ap_materno = transformar_nombre_completo(row['Nombre'])
+            fecha_nac_formateada = formatear_fecha(row['Fecha Nacimiento'])
             
             valores = (
                 rut_limpio,
@@ -95,11 +118,11 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
                 ap_materno,
                 row['Sexo'],
                 row['Email'],
-                str(row['Fecha Nacimiento']), 
+                fecha_nac_formateada, 
                 row['Cargo'],
                 row['Comuna'],
                 str(row['Teléfono']),
-                row['estado']
+                row['Estado']
             )
 
             try:
@@ -123,7 +146,7 @@ def cargar_nomina_funcionarios(conexion, ruta_archivo):
         if 'cursor' in locals(): cursor.close()
 
 if __name__ == '__main__':
-    archivo = 'excel/NominaFuncionario.xlsx'
+    archivo = 'excel/dotacion/dotacion_faltante_activos.xlsx'
     conn = crear_conexion()
     if conn:
         cargar_nomina_funcionarios(conn, archivo)
