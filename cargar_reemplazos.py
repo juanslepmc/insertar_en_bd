@@ -57,16 +57,40 @@ def limpiar_entero(valor):
         return 0
 
 def limpiar_fecha(valor):
-    if valor is None or pd.isna(valor) or str(valor).strip() == "" or str(valor).lower() == "nan" or str(valor) == "Sin información":
+    # 1. Manejo de nulos, NaNs y cadenas vacías/inválidas
+    if valor is None or pd.isna(valor):
         return "Sin información"
-    try:
-        val_str = str(valor).strip().split(" ")[0]
-        fecha_dt = pd.to_datetime(val_str, errors='coerce')
-        if pd.isna(fecha_dt):
-            return str(valor).strip()
-        return fecha_dt.strftime('%Y-%m-%d')
-    except:
-        return str(valor).strip()
+    
+    val_str = str(valor).strip()
+    if val_str == "" or val_str.lower() in ("nan", "none", "null", "sin información"):
+        return "Sin información"
+
+    # 2. Eliminar componente de hora (si existe) y reemplazar '/' por '-'
+    val_clean = val_str.split(" ")[0].replace('/', '-')
+
+    # 3. Separar en componentes [parte1, parte2, parte3]
+    partes = val_clean.split('-')
+
+    if len(partes) != 3:
+        return val_str  # Retorna el texto original si no cumple la estructura de fecha
+
+    p1, p2, p3 = partes[0].strip(), partes[1].strip(), partes[2].strip()
+
+    # 5. Caso latino: DD-MM-YYYY (o D-M-YYYY) -> YYYY-MM-DD
+    if len(p3) == 4 and len(p1) <= 2 and len(p2) <= 2:
+        dia = p1.zfill(2)
+        mes = p2.zfill(2)
+        anio = p3
+        return f"{anio}-{mes}-{dia}"
+
+    # 6. Caso ISO: YYYY-MM-DD (o YYYY-M-D) -> YYYY-MM-DD
+    elif len(p1) == 4 and len(p2) <= 2 and len(p3) <= 2:
+        anio = p1
+        mes = p2.zfill(2)
+        dia = p3.zfill(2)
+        return f"{anio}-{mes}-{dia}"
+
+    return val_str
 
 def extraer_rbd(valor):
     if valor is None or pd.isna(valor) or str(valor).strip() == "" or str(valor).lower() == "nan":
