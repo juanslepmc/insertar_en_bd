@@ -90,7 +90,7 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
         sql_insert = """
             INSERT INTO Asistencia (
                 anio, mes, rbd, rut_alumno, dias_asistidos, 
-                dias_trabajados, asistencia_promedio
+                dias_matriculados, asistencia_promedio
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
         
@@ -140,7 +140,7 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
         if filas_omitidas:
             if not os.path.exists('excel'): os.makedirs('excel')
             df_err = pd.DataFrame(filas_omitidas)
-            ruta_log = f'excel/asistencia_omitidos_{mes_carga}_{anio_carga}.xlsx'
+            ruta_log = f'excel/asistencia/asistencia_omitidos_{mes_carga}_{anio_carga}.xlsx'
             df_err.to_excel(ruta_log, index=False)
             print(f"📄 Log de alumnos no procesados generado: {ruta_log}")
 
@@ -153,7 +153,7 @@ def cargar_asistencia_incremental(conexion, ruta_archivo):
         cursor.close()
 
 if __name__ == '__main__':
-    ARCHIVO = 'excel/asistencia/2025/12/12-SLEP-MAULE-COSTA-DICIEMBRE-2025.xlsx' 
+    ARCHIVO = 'excel/asistencia/2026/6/06 SLEP MAULE COSTA - JUNIO 2026.xlsx' 
     conn = crear_conexion()
     if conn:
         cargar_asistencia_incremental(conn, ARCHIVO)

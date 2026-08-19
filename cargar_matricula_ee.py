@@ -156,7 +156,7 @@ def cargar_matricula_incremental(conexion, ruta_archivo):
 # EJECUCIÓN
 # --------------------------------------------------
 if __name__ == '__main__':
-    archivo_input = 'excel/matricula/2025/12/Consolidado_sin_duplicados.xlsx'
+    archivo_input = 'excel/matricula/2026/8/Consolidado_sin_duplicados.xlsx'
     conn = crear_conexion()
     
     if conn:
